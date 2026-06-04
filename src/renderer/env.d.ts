@@ -1,30 +1,17 @@
 /// <reference types="vite/client" />
 
-/** preload 暴露的桌面宠物 API */
+import type { DeepseekConfig, PetState, ModelMeta } from '../shared/types'
+
 interface DeskpetAPI {
   deepseekChat: (message: string) => Promise<string>
   getSettings: () => Promise<DeepseekConfig>
   setSettings: (config: Partial<DeepseekConfig>) => Promise<void>
   savePetState: (state: PetState) => Promise<void>
   loadPetState: () => Promise<PetState | null>
+  moveWindow: (deltaX: number, deltaY: number) => Promise<void>
+  listModels: () => Promise<ModelMeta[]>
+  setActiveModel: (name: string) => Promise<void>
   onOpenSettings: (callback: () => void) => () => void
-}
-
-interface DeepseekConfig {
-  apiKey: string
-  model: 'deepseek-chat' | 'deepseek-reasoner' | 'deepseek-v4-pro'
-  temperature: number
-}
-
-type PetAnimationState = 'idle' | 'walking' | 'dragging' | 'speaking' | 'sleeping'
-
-interface PetState {
-  x: number
-  y: number
-  animation: PetAnimationState
-  mood: number
-  energy: number
-  isVisible: boolean
 }
 
 declare global {

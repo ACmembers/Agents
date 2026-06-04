@@ -1,0 +1,129 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  html, body, #root {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  /* 自定义滚动条 */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #cdd4e2;
+    border-radius: 3px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #a9b4cc;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-white/80 backdrop-blur-sm border border-ivory-200 rounded-2xl shadow-sm;
+  }
+
+  .btn-primary {
+    @apply px-4 py-2 bg-phoebe-500 text-white rounded-lg font-medium
+           hover:bg-phoebe-600 active:scale-[0.98] transition-all duration-150
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+
+  .btn-ghost {
+    @apply px-4 py-2 bg-transparent text-slateblue-600 rounded-lg font-medium
+           hover:bg-slateblue-100 active:scale-[0.98] transition-all duration-150;
+  }
+
+  .btn-danger {
+    @apply px-4 py-2 bg-red-50 text-red-600 border border-red-200 rounded-lg font-medium
+           hover:bg-red-100 active:scale-[0.98] transition-all duration-150;
+  }
+
+  .input-field {
+    @apply w-full px-3 py-2.5 bg-white border border-slateblue-200 rounded-lg text-sm
+           focus:outline-none focus:ring-2 focus:ring-phoebe-400/40 focus:border-phoebe-400
+           placeholder:text-slateblue-300 transition-all duration-150;
+  }
+
+  .toggle-switch {
+    @apply relative w-10 h-6 rounded-full transition-colors duration-200
+           bg-slateblue-200 data-[on=true]:bg-phoebe-500 cursor-pointer;
+  }
+  .toggle-switch::after {
+    content: '';
+    @apply absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow-sm
+           transition-transform duration-200;
+  }
+  .toggle-switch[data-on="true"]::after {
+    @apply translate-x-4;
+  }
+
+  .tag {
+    @apply inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium;
+  }
+  .tag-timer    { @apply bg-blue-50 text-blue-700; }
+  .tag-keyword  { @apply bg-purple-50 text-purple-700; }
+  .tag-manual   { @apply bg-amber-50 text-amber-700; }
+  .tag-startup  { @apply bg-emerald-50 text-emerald-700; }
+
+  .drop-zone {
+    @apply border-2 border-dashed border-slateblue-200 rounded-2xl p-8
+           flex flex-col items-center justify-center gap-3
+           hover:border-phoebe-400 hover:bg-phoebe-50/50
+           transition-all duration-200 cursor-pointer;
+  }
+  .drop-zone.dragover {
+    @apply border-phoebe-500 bg-phoebe-50/70 scale-[1.01];
+  }
+
+  .model-card {
+    @apply glass-card overflow-hidden
+           hover:shadow-md hover:-translate-y-0.5 transition-all duration-200;
+  }
+  .model-card.active {
+    @apply ring-2 ring-phoebe-500 ring-offset-2;
+  }
+
+  .line-numbers {
+    @apply text-right text-xs text-slateblue-300 select-none pr-3 leading-relaxed
+           border-r border-slateblue-100 mr-3;
+  }
+}
+
+@layer utilities {
+  .animate-fade-in {
+    animation: fadeIn 0.3s ease-out;
+  }
+  .animate-slide-up {
+    animation: slideUp 0.3s ease-out;
+  }
+  .animate-scale-in {
+    animation: scaleIn 0.2s ease-out;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}

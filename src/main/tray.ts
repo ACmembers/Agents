@@ -4,7 +4,7 @@ import { join } from 'path'
 let tray: Tray | null = null
 
 export function createTray(win: BrowserWindow): void {
-  const iconPath = join(__dirname, '../../public/icon.png')
+  const iconPath = join(__dirname, '../../public/icon-tray.png')
 
   tray = new Tray(iconPath)
   tray.setToolTip('DeskPet — 我的 AI 桌宠')

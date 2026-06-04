@@ -1,7 +1,8 @@
-import { app, BrowserWindow, screen, globalShortcut } from 'electron'
+import { app, BrowserWindow, screen } from 'electron'
 import { join } from 'path'
 import { registerIpcHandlers } from './ipc'
 import { createTray } from './tray'
+import { registerModelProtocol } from './modelProtocol'
 
 // ============================================================
 // 🚀 性能优化：GPU 加速与渲染标志
@@ -21,9 +22,9 @@ function createWindow(): void {
   const { width: screenWidth } = screen.getPrimaryDisplay().workAreaSize
 
   mainWindow = new BrowserWindow({
-    width: 160,
-    height: 180,
-    x: screenWidth - 200,
+    width: 320,
+    height: 400,
+    x: screenWidth - 360,
     y: 100,
     transparent: true,
     frame: false,
@@ -65,9 +66,7 @@ function createWindow(): void {
 }
 
 app.whenReady().then(() => {
-  // 禁用硬件加速回退警告
-  app.disableHardwareAcceleration()
-
+  registerModelProtocol()
   createWindow()
   createTray(mainWindow!)
   registerIpcHandlers(mainWindow!)

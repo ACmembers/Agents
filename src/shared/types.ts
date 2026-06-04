@@ -7,8 +7,8 @@ export interface DeepseekConfig {
   temperature: number
 }
 
-/** 宠物动画状态 */
-export type PetAnimationState = 'idle' | 'walking' | 'dragging' | 'speaking' | 'sleeping'
+/** 宠物动画状态（Live2D 版本，去掉 walking/dragging） */
+export type PetAnimationState = 'idle' | 'speaking' | 'sleeping'
 
 /** 宠物状态 */
 export interface PetState {
@@ -27,6 +27,13 @@ export interface ChatMessage {
   timestamp: number
 }
 
+/** Live2D 模型元数据 */
+export interface ModelMeta {
+  name: string
+  path: string
+  model3Json: string
+}
+
 /** 主进程 → 渲染进程 IPC 通道 */
 export interface IpcChannels {
   'deepseek:chat': (message: string) => Promise<string>
@@ -35,10 +42,7 @@ export interface IpcChannels {
   'settings:set': (config: Partial<DeepseekConfig>) => Promise<void>
   'pet:state-save': (state: PetState) => Promise<void>
   'pet:state-load': () => Promise<PetState | null>
-}
-
-/** 窗口拖拽事件 */
-export interface DragPayload {
-  deltaX: number
-  deltaY: number
+  'window:move': (deltaX: number, deltaY: number) => Promise<void>
+  'model:list': () => Promise<ModelMeta[]>
+  'model:set-active': (name: string) => Promise<void>
 }

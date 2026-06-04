@@ -3,10 +3,11 @@
   "version": "0.1.0",
   "description": "🐾 一个基于 Deepseek API 的智能桌面宠物",
   "private": true,
-  "main": "dist/main/index.js",
+  "main": "out/main/index.js",
   "scripts": {
-    "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "generate-icons": "node scripts/generate-icons.mjs",
+    "dev": "npm run generate-icons && electron-vite dev",
+    "build": "npm run generate-icons && electron-vite build",
     "preview": "electron-vite preview",
     "package": "electron-vite build && electron-builder",
     "package:win": "electron-vite build && electron-builder --win",
@@ -16,6 +17,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "live2d-widget-model-shizuku": "^1.0.5",
+    "pixi-live2d-display": "^0.5.0-beta",
+    "pixi.js": "^7.4.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
@@ -26,8 +30,9 @@
     "electron": "^33.2.0",
     "electron-builder": "^25.1.8",
     "electron-vite": "^2.3.0",
+    "sharp": "^0.34.5",
     "typescript": "^5.6.3",
-    "vite": "^6.0.3"
+    "vite": "^5.4.10"
   },
   "build": {
     "appId": "com.deskpet.app",
@@ -36,18 +41,24 @@
       "output": "release"
     },
     "files": [
-      "dist/**/*"
+      "out/**/*"
     ],
     "win": {
-      "target": ["nsis"],
+      "target": [
+        "nsis"
+      ],
       "icon": "public/icon.png"
     },
     "mac": {
-      "target": ["dmg"],
+      "target": [
+        "dmg"
+      ],
       "icon": "public/icon.png"
     },
     "linux": {
-      "target": ["AppImage"],
+      "target": [
+        "AppImage"
+      ],
       "icon": "public/icon.png"
     }
   }

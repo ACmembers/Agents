@@ -1,25 +1,30 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { DeepseekConfig, PetState } from '../shared/types'
+import type { DeepseekConfig, PetState, ModelMeta } from '../shared/types'
 
-/** 暴露给渲染进程的 API */
 const api = {
-  // Deepseek 聊天
   deepseekChat: (message: string): Promise<string> =>
     ipcRenderer.invoke('deepseek:chat', message),
 
-  // 设置管理
   getSettings: (): Promise<DeepseekConfig> =>
     ipcRenderer.invoke('settings:get'),
   setSettings: (config: Partial<DeepseekConfig>): Promise<void> =>
     ipcRenderer.invoke('settings:set', config),
 
-  // 宠物状态持久化
   savePetState: (state: PetState): Promise<void> =>
     ipcRenderer.invoke('pet:state-save', state),
   loadPetState: (): Promise<PetState | null> =>
     ipcRenderer.invoke('pet:state-load'),
 
-  // 事件监听（来自主进程）
+  // 窗口移动
+  moveWindow: (deltaX: number, deltaY: number): Promise<void> =>
+    ipcRenderer.invoke('window:move', deltaX, deltaY),
+
+  // 模型管理
+  listModels: (): Promise<ModelMeta[]> =>
+    ipcRenderer.invoke('model:list'),
+  setActiveModel: (name: string): Promise<void> =>
+    ipcRenderer.invoke('model:set-active', name),
+
   onOpenSettings: (callback: () => void) => {
     ipcRenderer.on('open-settings', callback)
     return () => ipcRenderer.removeListener('open-settings', callback)

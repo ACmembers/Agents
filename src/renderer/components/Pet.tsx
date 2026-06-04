@@ -106,10 +106,8 @@ const Pet: React.FC<PetProps> = ({ animation, onDragStart, onDragEnd }) => {
         left: '50%',
         transform: 'translateX(-50%)',
         cursor: draggingRef.current ? 'grabbing' : 'grab',
-        // ⭐ GPU 合成层
+        // ⭐ GPU 合成层 + 减少事件冒泡
         willChange: 'transform',
-        transform: 'translateX(-50%) translateZ(0)',
-        // ⭐ 减少事件冒泡
         touchAction: 'none'
       }}
     />
