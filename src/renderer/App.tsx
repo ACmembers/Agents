@@ -66,7 +66,6 @@ const App: React.FC = () => {
         <Live2DPet
           animation={petAnim}
           onTap={handleTap}
-          modelUrl="/models/shizuku/shizuku.model.json"
         />
       </div>
 

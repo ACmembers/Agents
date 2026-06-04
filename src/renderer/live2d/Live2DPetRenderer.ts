@@ -1,335 +1,196 @@
 /**
- * Live2D 宠物渲染器
+ * 菲比桌宠渲染器 — 图片精灵版
  *
- * 使用 PixiJS + pixi-live2d-display 渲染 Live2D Cubism 模型。
- * 替换旧的 Canvas 2D PetRenderer。
+ * 使用真实角色立绘，canvas 渲染 + 呼吸动画 + 交互反馈。
  */
-import * as PIXI from 'pixi.js'
-import { Live2DModel, InternalModel } from 'pixi-live2d-display'
-
 export type PetAnim = 'idle' | 'speaking' | 'sleeping'
 
-type TapZone = 'head' | 'face' | 'body'
-
-// ============================================================
-// 默认动画 → Live2D motion 映射
-// 不同模型的 motion group 名称可能不同，此处为通用映射
-// ============================================================
-const DEFAULT_MOTION_GROUPS: Record<PetAnim, string[]> = {
-  idle: ['idle', 'Idle', 'Idle_01', 'Idle_02', 'Breathing', 'Normal'],
-  speaking: ['talk', 'Talk', 'Talk_01', 'Talk_02', 'Speaking'],
-  sleeping: ['sleep', 'Sleep', 'Sleep_01', 'Sleeping']
+function getImageUrl(): string {
+  // Electron 开发模式下用 dev server 路径，生产用相对路径
+  if (typeof window !== 'undefined' && window.location.protocol === 'http:') {
+    return window.location.origin + '/assets/phoebe.jpg'
+  }
+  return './assets/phoebe.jpg'
 }
-
-const TAP_MOTIONS: Record<TapZone, string[]> = {
-  head: ['flick_head', 'TapHead', 'Tap_Head', 'TouchHead', 'FlickHead'],
-  face: ['pinch_in', 'pinch_out', 'TapFace', 'Tap_Face', 'TouchFace'],
-  body: ['tap_body', 'shake', 'TapBody', 'Tap_Body', 'TouchBody', 'Tap']
-}
-
-// ============================================================
-// Cubism 标准参数 ID（用于眼神/头部跟踪）
-// ============================================================
-const PARAM = {
-  EYE_BALL_X: 'ParamEyeBallX',
-  EYE_BALL_Y: 'ParamEyeBallY',
-  ANGLE_X: 'ParamAngleX',
-  ANGLE_Y: 'ParamAngleY',
-  ANGLE_Z: 'ParamAngleZ',
-  BODY_ANGLE_X: 'ParamBodyAngleX',
-  BODY_ANGLE_Y: 'ParamBodyAngleY',
-  BODY_ANGLE_Z: 'ParamBodyAngleZ',
-  BREATH: 'ParamBreath',
-  MOUTH_OPEN_Y: 'ParamMouthOpenY'
-}
+export type TapZone = 'head' | 'face' | 'body'
 
 export class Live2DPetRenderer {
-  private app: PIXI.Application | null = null
-  private model: Live2DModel<InternalModel> | null = null
-  private currentAnim: PetAnim = 'idle'
+  private ctx: CanvasRenderingContext2D | null = null
+  private canvas: HTMLCanvasElement | null = null
+  private image: HTMLImageElement | null = null
   private _destroyed = false
 
-  // 待机动画循环
-  private idleTimer: ReturnType<typeof setTimeout> | null = null
-  private idleMotionPlaying = false
-
-  // 鼠标位置（归一化 -1..1）
-  private mouseX = 0
-  private mouseY = 0
-  private _eyeTracking = true
-  private _mouseTracking = true
-
-  // 尺寸
-  private width = 320
-  private height = 400
-
-  // ============================================================
-  // 初始化
-  // ============================================================
+  private loadError: string | null = null
+  private currentAnim: PetAnim = 'idle'
+  private breathPhase = 0
+  private talkPhase = 0
+  private tapReaction = 0
+  private tapZone: TapZone = 'body'
+  private w = 320; private h = 400
 
   async init(container: HTMLElement, w: number, h: number): Promise<void> {
-    if (this._destroyed) return
+    this.w = w; this.h = h
+    container.innerHTML = ''
 
-    this.width = w
-    this.height = h
+    this.canvas = document.createElement('canvas')
+    const dpr = window.devicePixelRatio || 1
+    this.canvas.width = w * dpr
+    this.canvas.height = h * dpr
+    this.canvas.style.width = `${w}px`
+    this.canvas.style.height = `${h}px`
+    this.canvas.style.position = 'absolute'
+    this.canvas.style.top = '0'; this.canvas.style.left = '0'
+    this.ctx = this.canvas.getContext('2d')!
+    container.appendChild(this.canvas)
 
-    this.app = new PIXI.Application({
-      width: w,
-      height: h,
-      backgroundAlpha: 0,
-      antialias: true,
-      resolution: window.devicePixelRatio || 1,
-      autoDensity: true
-    })
-
-    container.appendChild(this.app.view as HTMLCanvasElement)
-    ;(this.app.view as HTMLCanvasElement).style.width = `${w}px`
-    ;(this.app.view as HTMLCanvasElement).style.height = `${h}px`
-
-    // 限帧 30fps
-    this.app.ticker.maxFPS = 30
-  }
-
-  // ============================================================
-  // 模型加载
-  // ============================================================
-
-  async loadModel(modelUrl: string): Promise<void> {
-    if (!this.app || this._destroyed) return
-
-    // 卸载旧模型
-    if (this.model) {
-      this.app.stage.removeChild(this.model)
-      this.model.destroy()
-      this.model = null
-    }
+    // 加载图片 — 先画占位确认 Canvas 工作，再加载图片
+    this.drawPlaceholder('加载中…')
+    this.startLoop()
 
     try {
-      this.model = await Live2DModel.from(modelUrl, {
-        autoInteract: false,
-        autoFocus: false
-      })
-
-      // 居中缩放
-      this.model.anchor.set(0.5, 0)
-      this.model.x = this.width / 2
-      this.model.y = 10
-
-      // 添加模糊缩放 transition（模型切换时）
-      this.model.scale.set(0.9)
-      const targetScale = Math.min(
-        (this.width * 0.7) / this.model.width,
-        (this.height * 0.85) / this.model.height,
-        1.0
-      )
-      this.model.scale.set(targetScale)
-
-      this.app.stage.addChild(this.model)
-
-      // 启动待机循环
-      this.startIdleLoop()
-    } catch (err) {
-      console.warn('[Live2D] 模型加载失败:', modelUrl, err)
-      throw err
+      const url = getImageUrl()
+      console.log('[Pet] 图片 URL:', url)
+      this.image = await this.loadImage(url)
+      console.log('[Pet] ✅ 图片加载成功', this.image.naturalWidth, 'x', this.image.naturalHeight)
+      this.loadError = null
+    } catch (e: any) {
+      console.error('[Pet] ❌ 图片加载失败:', e.message)
+      this.loadError = e.message
     }
+  }
+
+  private async loadImage(src: string): Promise<HTMLImageElement> {
+    // 直接创建 Image，让浏览器原生处理缓存和加载
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      img.onload = () => {
+        console.log('[Pet] ✅ Image 加载成功', img.naturalWidth, 'x', img.naturalHeight)
+        resolve(img)
+      }
+      img.onerror = () => {
+        console.error('[Pet] ❌ Image 加载失败, src:', src)
+        reject(new Error(`图片加载失败`))
+      }
+      // 加时间戳避免缓存问题
+      img.src = src
+    })
+  }
+
+  private startLoop(): void {
+    let last = performance.now()
+    const tick = (now: number) => {
+      if (this._destroyed) return
+      this.update(now - last)
+      last = now
+      this.draw()
+      requestAnimationFrame(tick)
+    }
+    requestAnimationFrame(tick)
   }
 
   // ============================================================
   // 动画控制
   // ============================================================
+  setAnimation(anim: PetAnim): void { this.currentAnim = anim }
 
-  setAnimation(anim: PetAnim): void {
-    if (this.currentAnim === anim) return
-    this.currentAnim = anim
-
-    if (anim === 'idle') {
-      this.startIdleLoop()
-    } else {
-      this.stopIdleLoop()
-      this.playMotion(anim)
-    }
+  update(deltaMs: number): void {
+    const dt = deltaMs / 1000
+    this.breathPhase += dt * 1.5
+    if (this.currentAnim === 'speaking') this.talkPhase += dt * 8
+    if (this.tapReaction > 0) this.tapReaction = Math.max(0, this.tapReaction - dt * 3)
   }
 
-  update(_deltaMs: number): void {
-    // PixiJS ticker 自行驱动，此处兼容旧接口
+  private drawPlaceholder(msg: string): void {
+    const ctx = this.ctx
+    if (!ctx) return
+    const dpr = window.devicePixelRatio || 1
+    ctx.save()
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    ctx.fillStyle = 'rgba(255,200,150,0.3)'
+    ctx.fillRect(20, 20, this.w - 40, this.h - 40)
+    ctx.fillStyle = '#333'
+    ctx.font = '16px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.fillText(msg, this.w / 2, this.h / 2)
+    ctx.restore()
   }
 
   draw(): void {
-    // PixiJS 自动渲染，此处兼容旧接口
+    const ctx = this.ctx
+    if (!ctx) return
+    const dpr = window.devicePixelRatio || 1
+    ctx.save()
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    ctx.clearRect(0, 0, this.w, this.h)
+
+    if (!this.image) {
+      if (this.loadError) {
+        this.drawPlaceholder(`❌ ${this.loadError}`)
+      } else {
+        this.drawPlaceholder('图片加载中…')
+      }
+      ctx.restore()
+      return
+    }
+
+    const img = this.image
+    const iw = img.naturalWidth
+    const ih = img.naturalHeight
+
+    // 计算图片适配 — 等比缩放到窗口内
+    const fitH = this.h * 0.85
+    const fitW = (iw / ih) * fitH
+    const cx = this.w / 2
+    const cy = this.h * 0.52
+
+    ctx.translate(cx, cy)
+
+    // 呼吸
+    const breath = Math.sin(this.breathPhase) * 0.006
+    ctx.scale(1 + breath, 1 + breath * 0.5)
+
+    // 点击晃动
+    if (this.tapReaction > 0) {
+      const shake = Math.sin(this.tapReaction * 12) * 4 * this.tapReaction
+      ctx.translate(shake, 0)
+    }
+
+    // 说话弹跳
+    if (this.currentAnim === 'speaking') {
+      ctx.translate(0, -Math.abs(Math.sin(this.talkPhase)) * 3)
+    }
+
+    // 睡觉暗化
+    if (this.currentAnim === 'sleeping') {
+      ctx.globalAlpha = 0.55
+    }
+
+    ctx.drawImage(img, -fitW / 2, -fitH / 2, fitW, fitH)
+
+    ctx.restore()
   }
 
   // ============================================================
   // 交互
   // ============================================================
-
-  onTap(zone: TapZone): void {
-    if (!this.model || this._destroyed) return
-    const motions = TAP_MOTIONS[zone]
-    for (const name of motions) {
-      try {
-        if (this.model.internalModel.motionManager.groups[name]) {
-          this.model.motion(name)
-          break
-        }
-      } catch { /* 继续尝试下一个 */ }
-    }
-  }
-
-  onMouseMove(nx: number, ny: number): void {
-    this.mouseX = Math.max(-1, Math.min(1, nx))
-    this.mouseY = Math.max(-1, Math.min(1, ny))
-    this.applyTracking()
-  }
-
-  setEyeTracking(on: boolean): void {
-    this._eyeTracking = on
-    if (!on) this.resetTracking()
-  }
-
-  setMouseTracking(on: boolean): void {
-    this._mouseTracking = on
-    if (!on) this.resetTracking()
-  }
+  onTap(zone: TapZone): void { this.tapReaction = 1; this.tapZone = zone }
+  onMouseMove(_nx: number, _ny: number): void { /* 静态图片不需要 */ }
+  setEyeTracking(_on: boolean): void { }
 
   resize(w: number, h: number): void {
-    this.width = w
-    this.height = h
-    if (this.app) {
-      this.app.renderer.resize(w, h)
-      ;(this.app.view as HTMLCanvasElement).style.width = `${w}px`
-      ;(this.app.view as HTMLCanvasElement).style.height = `${h}px`
-    }
-    if (this.model) {
-      this.model.x = w / 2
+    this.w = w; this.h = h
+    if (this.canvas) {
+      const dpr = window.devicePixelRatio || 1
+      this.canvas.width = w * dpr
+      this.canvas.height = h * dpr
+      this.canvas.style.width = `${w}px`
+      this.canvas.style.height = `${h}px`
     }
   }
 
   destroy(): void {
     this._destroyed = true
-    this.stopIdleLoop()
-    if (this.model) {
-      this.model.destroy()
-      this.model = null
-    }
-    if (this.app) {
-      this.app.destroy(true, { children: true })
-      this.app = null
-    }
-  }
-
-  // ============================================================
-  // 私有方法
-  // ============================================================
-
-  private startIdleLoop(): void {
-    if (this._destroyed || !this.model) return
-    this.stopIdleLoop()
-    this.playRandomIdleMotion()
-  }
-
-  private stopIdleLoop(): void {
-    if (this.idleTimer) {
-      clearTimeout(this.idleTimer)
-      this.idleTimer = null
-    }
-    this.idleMotionPlaying = false
-  }
-
-  private playRandomIdleMotion(): void {
-    if (this._destroyed || !this.model || this.currentAnim !== 'idle') return
-
-    const groups = DEFAULT_MOTION_GROUPS.idle
-    // 随机选一个空闲动作（跳过当前正在播放的组）
-    const availableGroups = groups.filter(
-      (g) => {
-        try {
-          return !!this.model!.internalModel.motionManager.groups[g]
-        } catch { return false }
-      }
-    )
-
-    if (availableGroups.length > 0) {
-      const group = availableGroups[Math.floor(Math.random() * availableGroups.length)]
-      try {
-        const motion = this.model.motion(group)
-        this.idleMotionPlaying = true
-
-        // 动作完成后回到呼吸循环
-        if (motion) {
-          const onFinish = () => {
-            this.idleMotionPlaying = false
-            this.scheduleNextIdle()
-          }
-          // Live2D motion 结束时触发
-          motion.once('finished', onFinish)
-          return
-        }
-      } catch { /* fall through */ }
-    }
-
-    this.scheduleNextIdle()
-  }
-
-  private scheduleNextIdle(): void {
-    if (this._destroyed || this.currentAnim !== 'idle') return
-    // 8~15 秒后播放下一个待机动作
-    const delay = 8000 + Math.random() * 7000
-    this.idleTimer = setTimeout(() => this.playRandomIdleMotion(), delay)
-  }
-
-  private playMotion(anim: PetAnim): void {
-    if (!this.model || this._destroyed) return
-
-    const groups = DEFAULT_MOTION_GROUPS[anim]
-    for (const group of groups) {
-      try {
-        if (this.model.internalModel.motionManager.groups[group]) {
-          this.model.motion(group)
-          break
-        }
-      } catch { /* 继续尝试下一个 */ }
-    }
-  }
-
-  private applyTracking(): void {
-    if (!this.model || this._destroyed) return
-
-    const coreModel = (this.model.internalModel as any)?.coreModel
-    if (!coreModel) return
-
-    const setParam = (id: string, value: number) => {
-      try { coreModel.setParameterValueById(id, value) } catch { /* 忽略不存在参数 */ }
-    }
-
-    if (this._eyeTracking) {
-      setParam(PARAM.EYE_BALL_X, this.mouseX * 0.5)
-      setParam(PARAM.EYE_BALL_Y, this.mouseY * 0.5)
-    }
-
-    if (this._mouseTracking) {
-      setParam(PARAM.ANGLE_X, this.mouseX * 15)
-      setParam(PARAM.ANGLE_Y, this.mouseY * 10)
-      setParam(PARAM.BODY_ANGLE_X, this.mouseX * 5)
-    }
-  }
-
-  private resetTracking(): void {
-    if (!this.model || this._destroyed) return
-    const coreModel = (this.model.internalModel as any)?.coreModel
-    if (!coreModel) return
-
-    const setParam = (id: string, value: number) => {
-      try { coreModel.setParameterValueById(id, value) } catch { /* ignore */ }
-    }
-
-    if (!this._eyeTracking) {
-      setParam(PARAM.EYE_BALL_X, 0)
-      setParam(PARAM.EYE_BALL_Y, 0)
-    }
-    if (!this._mouseTracking) {
-      setParam(PARAM.ANGLE_X, 0)
-      setParam(PARAM.ANGLE_Y, 0)
-      setParam(PARAM.BODY_ANGLE_X, 0)
-    }
+    if (this.canvas?.parentNode) this.canvas.parentNode.removeChild(this.canvas)
+    this.ctx = null; this.canvas = null; this.image = null
   }
 }

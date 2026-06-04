@@ -17,6 +17,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@pixi/canvas-display": "^7.4.3",
+    "@pixi/canvas-graphics": "^7.4.3",
+    "@pixi/canvas-renderer": "^7.4.3",
+    "@pixi/canvas-sprite": "^7.4.3",
+    "@pixi/unsafe-eval": "^7.4.3",
     "live2d-widget-model-shizuku": "^1.0.5",
     "pixi-live2d-display": "^0.5.0-beta",
     "pixi.js": "^7.4.3",
