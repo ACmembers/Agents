@@ -13,18 +13,40 @@ def get_character_manager() -> CharacterManager:
     return _cm
 
 
-def build_system_prompt(skill_injections: list[str] | None = None) -> str:
-    """从当前角色包构建 System Prompt"""
+def build_system_prompt(
+    skill_injections: list[str] | None = None,
+    screen_context: str = ""
+) -> str:
+    """从当前角色包 + 语音包 + 屏幕感知构建 System Prompt"""
     cm = get_character_manager()
     prompt = cm.active.build_system_prompt()
 
     if not prompt:
-        # 回退到配置文件中的自定义 Prompt
         from phoebe_persona import PHOEBE_SYSTEM_PROMPT
         cfg = load_config()
         prompt = cfg.get("persona", {}).get("system_prompt", "") or PHOEBE_SYSTEM_PROMPT
 
-    # 追加用户偏好
+    # 语音包 AI 提示词注入
+    from voice_manager import VoiceManager
+    vm = VoiceManager()
+    voice_prompt = vm.voice_prompt
+    if voice_prompt:
+        prompt += f"\n\n## 语音风格指导\n{voice_prompt}"
+
+    # 语音包性格提示注入
+    hints = vm.personality_hints
+    if hints:
+        parts = []
+        if hints.get("tone"):
+            parts.append(f"- 语气: {hints['tone']}")
+        if hints.get("pace"):
+            parts.append(f"- 语速风格: {hints['pace']}")
+        if hints.get("traits"):
+            parts.append(f"- 性格特征: {', '.join(hints['traits'])}")
+        if parts:
+            prompt += "\n## 角色语音特征\n" + "\n".join(parts)
+
+    # 用户偏好
     cfg = load_config()
     persona_cfg = cfg.get("persona", {})
     ms = persona_cfg.get("max_sentences", 4)
@@ -32,6 +54,10 @@ def build_system_prompt(skill_injections: list[str] | None = None) -> str:
     prompt += f"\n\n## 回复规则\n- 每轮不超过 {ms} 句话"
     if emoji:
         prompt += "\n- 适当使用 emoji"
+
+    # 屏幕感知上下文 — 让 AI 知道用户在做什么
+    if screen_context:
+        prompt += f"\n\n## 用户当前状态\n{screen_context}\n（可以根据用户正在做的事情自然地提供帮助或评论）"
 
     if skill_injections:
         prompt += "\n## 当前情境\n" + "\n".join(f"- {inj}" for inj in skill_injections)

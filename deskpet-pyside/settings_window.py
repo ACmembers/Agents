@@ -200,41 +200,187 @@ class SettingsWindow(QDialog):
         save_config(cfg)
 
     # ============================================================
+    # ============================================================
     # Tab 3: Skill
     # ============================================================
     def _tab_skills(self):
         w = QWidget()
         layout = QVBoxLayout(w)
+        layout.setSpacing(8)
+
+        # 拖拽导入区
+        lbl = QLabel("📥 拖拽 Skill .json 文件到列表或点击下方按钮导入/添加")
+        lbl.setStyleSheet("color: #7f8db1; font-size: 11px;")
+        layout.addWidget(lbl)
 
         self.skill_list = QListWidget()
+        self.skill_list.setMinimumHeight(180)
+        self.skill_list.setAcceptDrops(True)
+        self.skill_list.dragEnterEvent = lambda e: e.accept() if e.mimeData().hasUrls() else None
+        self.skill_list.dropEvent = self._skill_drop
+        self.skill_list.itemDoubleClicked.connect(self._toggle_skill)
         self._refresh_skill_list()
         layout.addWidget(self.skill_list)
 
         btn_row = QHBoxLayout()
-        btn_reset = QPushButton("🔄 恢复默认 Skill")
+        btn_add = QPushButton("➕ 添加")
+        btn_add.clicked.connect(self._add_skill)
+        btn_import = QPushButton("📥 导入 .json")
+        btn_import.clicked.connect(self._import_skills)
+        btn_export = QPushButton("📤 导出")
+        btn_export.clicked.connect(self._export_skills)
+        btn_edit = QPushButton("✏️ 编辑")
+        btn_edit.clicked.connect(self._edit_skill_dialog)
+        btn_delete = QPushButton("🗑️ 删除")
+        btn_delete.clicked.connect(self._delete_skill)
+        btn_reset = QPushButton("🔄 恢复默认")
         btn_reset.clicked.connect(lambda: [save_skills(DEFAULT_SKILLS), self._refresh_skill_list()])
-        btn_row.addWidget(btn_reset)
+        for b in [btn_add, btn_import, btn_export, btn_edit, btn_delete, btn_reset]:
+            b.setMinimumHeight(30)
+            btn_row.addWidget(b)
         layout.addLayout(btn_row)
 
-        self.skill_list.itemDoubleClicked.connect(self._edit_skill)
         return w
 
     def _refresh_skill_list(self):
         self.skill_list.clear()
         skills = load_skills() or DEFAULT_SKILLS
-        for sk in skills:
-            status = "✅" if sk.get("enabled") else "❌"
-            self.skill_list.addItem(f"{status} [{sk.get('trigger','?')}] {sk.get('name','?')} — {sk.get('description','')}")
+        for i, sk in enumerate(skills):
+            s = "✅" if sk.get("enabled") else "❌"
+            t = sk.get("trigger", "?")
+            self.skill_list.addItem(f"{s} [{t}] {sk.get('name','?')} — {sk.get('description','')}")
 
-    def _edit_skill(self, item):
+    def _skill_drop(self, event):
+        for url in event.mimeData().urls():
+            path = url.toLocalFile()
+            if path.endswith(".json"):
+                self._do_import_skills(path)
+                return
+
+    def _import_skills(self):
+        path, _ = QFileDialog.getOpenFileName(self, "导入 Skill", "", "JSON (*.json)")
+        if path:
+            self._do_import_skills(path)
+
+    def _do_import_skills(self, path: str):
+        try:
+            data = json.loads(Path(path).read_text(encoding="utf-8"))
+            skills = data if isinstance(data, list) else [data]
+            existing = load_skills() or DEFAULT_SKILLS
+            for sk in skills:
+                sk.setdefault("id", f"skill-{len(existing)}")
+                existing = [s for s in existing if s["id"] != sk["id"]] + [sk]
+            save_skills(existing)
+            self._refresh_skill_list()
+            QMessageBox.information(self, "导入成功", f"导入了 {len(skills)} 个 Skill")
+        except Exception as e:
+            QMessageBox.warning(self, "导入失败", str(e))
+
+    def _export_skills(self):
+        path, _ = QFileDialog.getSaveFileName(self, "导出 Skill", "skills.json", "JSON (*.json)")
+        if path:
+            skills = load_skills() or DEFAULT_SKILLS
+            Path(path).write_text(json.dumps(skills, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def _add_skill(self):
+        skills = load_skills() or DEFAULT_SKILLS
+        new_id = f"custom-{len(skills)+1}"
+        skills.append({
+            "id": new_id, "name": "新技能", "trigger": "timer", "enabled": False,
+            "cooldown": 60, "description": "", "config": {"interval": 3600, "random_variance": 300},
+            "prompt": "触发时的提示词"
+        })
+        save_skills(skills)
+        self._refresh_skill_list()
+        self._open_skill_editor(len(skills) - 1)
+
+    def _toggle_skill(self, item):
         skills = load_skills() or DEFAULT_SKILLS
         idx = self.skill_list.currentRow()
+        if 0 <= idx < len(skills):
+            skills[idx]["enabled"] = not skills[idx].get("enabled", True)
+            save_skills(skills)
+            self._refresh_skill_list()
+
+    def _edit_skill_dialog(self):
+        idx = self.skill_list.currentRow()
+        skills = load_skills() or DEFAULT_SKILLS
+        if 0 <= idx < len(skills):
+            self._open_skill_editor(idx)
+
+    def _open_skill_editor(self, idx: int):
+        skills = load_skills() or DEFAULT_SKILLS
         if idx < 0 or idx >= len(skills):
             return
         sk = skills[idx]
-        sk["enabled"] = not sk.get("enabled", True)
-        save_skills(skills)
-        self._refresh_skill_list()
+
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"编辑 Skill: {sk.get('name','')}")
+        dlg.resize(500, 400)
+        layout = QFormLayout(dlg)
+
+        name_edit = QLineEdit(sk.get("name", ""))
+        layout.addRow("名称:", name_edit)
+
+        desc_edit = QLineEdit(sk.get("description", ""))
+        layout.addRow("描述:", desc_edit)
+
+        trig_cb = QComboBox()
+        trig_cb.addItems(["timer", "keyword", "manual", "startup"])
+        trig_cb.setCurrentText(sk.get("trigger", "timer"))
+        layout.addRow("触发类型:", trig_cb)
+
+        prompt_edit = QTextEdit()
+        prompt_edit.setPlainText(sk.get("prompt", ""))
+        prompt_edit.setMaximumHeight(120)
+        layout.addRow("Prompt:", prompt_edit)
+
+        cooldown_spin = QSpinBox()
+        cooldown_spin.setRange(0, 86400)
+        cooldown_spin.setValue(sk.get("cooldown", 60))
+        cooldown_spin.setSuffix(" 秒")
+        layout.addRow("冷却:", cooldown_spin)
+
+        enabled_cb = QCheckBox("启用")
+        enabled_cb.setChecked(sk.get("enabled", False))
+        layout.addRow("", enabled_cb)
+
+        btn_row = QHBoxLayout()
+        btn_save = QPushButton("💾 保存")
+        btn_cancel = QPushButton("取消")
+        btn_row.addWidget(btn_save)
+        btn_row.addWidget(btn_cancel)
+        layout.addRow("", btn_row)
+
+        def save():
+            skills = load_skills() or DEFAULT_SKILLS
+            skills[idx] = {
+                "id": sk["id"],
+                "name": name_edit.text(),
+                "description": desc_edit.text(),
+                "trigger": trig_cb.currentText(),
+                "prompt": prompt_edit.toPlainText(),
+                "cooldown": cooldown_spin.value(),
+                "enabled": enabled_cb.isChecked(),
+                "config": sk.get("config", {}),
+            }
+            save_skills(skills)
+            self._refresh_skill_list()
+            dlg.accept()
+
+        btn_save.clicked.connect(save)
+        btn_cancel.clicked.connect(dlg.reject)
+        dlg.exec()
+
+    def _delete_skill(self):
+        idx = self.skill_list.currentRow()
+        skills = load_skills() or DEFAULT_SKILLS
+        if 0 <= idx < len(skills):
+            name = skills[idx].get("name", "")
+            if QMessageBox.question(self, "确认", f"删除 Skill 「{name}」？") == QMessageBox.StandardButton.Yes:
+                del skills[idx]
+                save_skills(skills)
+                self._refresh_skill_list()
 
     # ============================================================
     # Tab 4: 外观

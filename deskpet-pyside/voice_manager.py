@@ -16,8 +16,22 @@ class VoiceManager:
         self._player: QMediaPlayer | None = None
         self._audio_output: QAudioOutput | None = None
         self.enabled = True
-        self.volume = 80  # 0-100
+        self.volume = 80
         self._load_active()
+
+    @property
+    def voice_prompt(self) -> str:
+        """语音包携带的 AI 提示词 — 注入到 System Prompt"""
+        if not self._active_pack:
+            return ""
+        return self._active_pack.get("voice_prompt", "")
+
+    @property
+    def personality_hints(self) -> dict:
+        """语音包携带的角色性格提示"""
+        if not self._active_pack:
+            return {}
+        return self._active_pack.get("personality", {})
 
     def _load_active(self):
         """加载当前激活的语音包"""

@@ -18,6 +18,7 @@ from persona import build_system_prompt, save_message
 from ai_client import chat
 from skill_scheduler import SkillScheduler
 from config import load_config
+from screen_observer import ScreenObserver
 
 
 class App:
@@ -42,6 +43,27 @@ class App:
         self.bubble_timer = QTimer()
         self.bubble_timer.setSingleShot(True)
         self.bubble_timer.timeout.connect(self._clear_bubble)
+
+        # 屏幕感知 + 主动关怀
+        self.observer = ScreenObserver()
+        self._screen_context = ""
+        self._last_proactive_context = ""
+        self._proactive_cooldown = 0  # 冷却计时器
+
+        def on_ctx(ctx):
+            self._screen_context = ctx
+            # 上下文变化时检查是否需要主动回应
+            if ctx and ctx != self._last_proactive_context and self._proactive_cooldown <= 0:
+                self._last_proactive_context = ctx
+                self._proactive_cooldown = 120  # 2 分钟冷却
+                asyncio.ensure_future(self._proactive_check(ctx))
+
+        self.observer.on_context_change = on_ctx
+
+        # 每 30 秒衰减冷却
+        self._cooldown_timer = QTimer()
+        self._cooldown_timer.timeout.connect(self._decay_cooldown)
+        self._cooldown_timer.start(30000)
 
         # Skill 调度器
         self.scheduler = SkillScheduler()
@@ -84,20 +106,63 @@ class App:
             self._toggle_visible()
 
     def _on_chat(self):
-        self.pet.speak("")
-        self._show_bubble("稍等，让我想想… 🤔")
-        asyncio.ensure_future(self._do_chat())
+        """双击 → 显示输入框"""
+        self._show_input_bar()
 
-    async def _do_chat(self):
-        system_prompt = build_system_prompt()
+    def _show_input_bar(self):
+        """显示聊天输入栏 — 放在图片下方"""
+        from PySide6.QtWidgets import QLineEdit
+        if hasattr(self, '_input_bar') and self._input_bar:
+            self._input_bar.deleteLater()
+
+        inp = QLineEdit(self.pet)
+        inp.setPlaceholderText("和菲比说点什么…")
+        inp.setStyleSheet("""
+            QLineEdit {
+                background: rgba(255,255,255,0.92);
+                border: 1.5px solid #d4a840;
+                border-radius: 18px;
+                padding: 7px 14px;
+                font-size: 13px;
+                color: #3e4967;
+            }
+        """)
+        # 放在图片下方，窗口底部
+        pet_h = self.pet.height()
+        pet_w = self.pet.width()
+        bar_w = pet_w - 30
+        bar_h = 34
+        bar_x = 15
+        bar_y = pet_h - bar_h - 10
+        inp.setGeometry(bar_x, bar_y, bar_w, bar_h)
+        inp.returnPressed.connect(lambda: self._send_message(inp))
+        inp.show()
+        inp.setFocus()
+        self._input_bar = inp
+
+    def _send_message(self, inp):
+        text = inp.text().strip()
+        if not text:
+            return
+        inp.deleteLater()
+        self._input_bar = None
+        self.pet.speak("")
+        self._show_bubble("…")
+        asyncio.ensure_future(self._do_chat(text))
+
+    async def _do_chat(self, message: str):
+        ctx = self._screen_context
+        system_prompt = build_system_prompt(screen_context=ctx)
         try:
-            reply = await chat("今天过得怎么样呀？陪我聊聊天吧！", system_prompt)
+            reply = await chat(message, system_prompt)
         except Exception:
             reply = "唔… 我好像卡住了 (._.)"
-        save_message("user", "今天过得怎么样呀？陪我聊聊天吧！")
+        save_message("user", message)
         save_message("assistant", reply)
         self._show_bubble(reply)
         self.pet.idle()
+        # 回复后重新显示输入框，方便连续对话
+        self._show_input_bar()
 
     def _on_tap(self, zone: str):
         replies = {
@@ -114,7 +179,7 @@ class App:
         asyncio.ensure_future(self._do_skill_chat(prompt))
 
     async def _do_skill_chat(self, skill_prompt: str):
-        system_prompt = build_system_prompt([skill_prompt])
+        system_prompt = build_system_prompt([skill_prompt], screen_context=self._screen_context)
         try:
             reply = await chat("", system_prompt)
         except Exception:
@@ -143,6 +208,34 @@ class App:
         bubble.show()
         self._bubble_label = bubble
         self.bubble_timer.start(8000)
+
+    def _decay_cooldown(self):
+        if self._proactive_cooldown > 0:
+            self._proactive_cooldown -= 30
+
+    async def _proactive_check(self, ctx: str):
+        """检测到用户切换应用 → AI 判断是否主动搭话"""
+        if not ctx:
+            return
+        system_prompt = build_system_prompt(screen_context=ctx)
+        # 让 AI 决定是否回应
+        check_prompt = (
+            f"{system_prompt}\n\n"
+            f"## 用户当前状态\n{ctx}\n\n"
+            f"你注意到用户切换了应用。请判断是否应该主动说点什么。"
+            f"如果用户刚开始一个新任务，可以简短鼓励一句（不超过1句话）。"
+            f"如果不需要说话，回复一个字「无」。"
+        )
+        try:
+            reply = await chat("", check_prompt)
+            reply = reply.strip()
+            if reply and reply != "无" and len(reply) > 1:
+                save_message("assistant", reply)
+                self._show_bubble(reply)
+                self.pet.speak("")
+                QTimer.singleShot(3000, self.pet.idle)
+        except Exception:
+            pass
 
     def _clear_bubble(self):
         if self._bubble_label:

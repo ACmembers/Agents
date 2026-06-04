@@ -1,7 +1,7 @@
-"""动画渲染引擎 — 优化版：预缩放 + 最小化重绘"""
+"""动画引擎 — 帧缓存版：零 per-frame 计算"""
 
 import math
-from PySide6.QtCore import QObject, QTimer, Qt, QRect
+from PySide6.QtCore import QObject, QTimer, Qt
 from PySide6.QtGui import QPixmap, QPainter
 from PySide6.QtWidgets import QLabel
 
@@ -9,114 +9,136 @@ ANIM_IDLE = "idle"
 ANIM_SPEAKING = "speaking"
 ANIM_SLEEPING = "sleeping"
 
+FRAMES = 10       # 预渲染帧数
+FPS = 10          # 帧率
+BREATH_AMP = 0.006
+
 
 class PetRenderer(QObject):
     def __init__(self, label: QLabel, parent=None):
         super().__init__(parent)
         self.label = label
-        self.base_pixmap: QPixmap | None = None
-        self.scaled_pixmap: QPixmap | None = None  # 预缩放的基准图
-        self._display_pixmap: QPixmap | None = None  # 当前帧
+        self._base: QPixmap | None = None
+        self._idle_frames: list[QPixmap] = []     # 预渲染呼吸帧
+        self._speak_frames: list[QPixmap] = []    # 预渲染说话帧
+        self._sleep_frames: list[QPixmap] = []    # 预渲染睡觉帧
+        self._tap_frames: list[QPixmap] = []      # 点击晃动帧
 
         self.anim_state = ANIM_IDLE
-        self.breath_phase = 0.0
-        self.talk_phase = 0.0
-        self.tap_reaction = 0.0
-        self._dirty = True  # 是否需要重绘
+        self._frame_idx = 0
+        self._tap_idx = 0
+        self._tap_frames_left = 0
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self._tick)
-        self.timer.start(66)  # ~15fps — 桌宠不需要 30fps
+        self.timer.start(1000 // FPS)
+
+    # ============================================================
+    # 预渲染所有帧（load_image 时一次性完成）
+    # ============================================================
 
     def load_image(self, path: str):
-        self.base_pixmap = QPixmap(path)
-        self._rescale()
-        self._redraw()
+        self._base = QPixmap(path)
+        self._prerender()
 
-    def _rescale(self):
-        """预缩放一次，不在每帧做"""
-        if not self.base_pixmap:
-            return
-        lh = self.label.height()
-        if lh <= 0:
-            return
-        fit_h = int(lh * 0.85)
-        self.scaled_pixmap = self.base_pixmap.scaledToHeight(
-            fit_h, Qt.TransformationMode.SmoothTransformation
-        )
-
-    def _tick(self):
-        self.breath_phase += 0.1
-        if self.anim_state == ANIM_SPEAKING:
-            self.talk_phase += 0.6
-        if self.tap_reaction > 0:
-            self.tap_reaction = max(0, self.tap_reaction - 0.16)
-        self._redraw()
-
-    def _redraw(self):
-        if not self.scaled_pixmap:
+    def _prerender(self):
+        """预计算所有动画帧 — 之后只做 QLabel.setPixmap 切换"""
+        if not self._base:
             return
         lw, lh = self.label.width(), self.label.height()
         if lw <= 0 or lh <= 0:
             return
 
-        pix = self.scaled_pixmap
-        pw, ph = pix.width(), pix.height()
+        fit_h = int(lh * 0.75)
+        scaled = self._base.scaledToHeight(fit_h, Qt.TransformationMode.SmoothTransformation)
+        pw, ph = scaled.width(), scaled.height()
 
-        # 呼吸缩放
-        breath = math.sin(self.breath_phase) * 0.006
-        if self.anim_state == ANIM_SLEEPING:
-            breath *= 0.4
+        # idle 呼吸帧
+        self._idle_frames.clear()
+        for i in range(FRAMES):
+            phase = (i / FRAMES) * 2 * math.pi
+            breath = math.sin(phase) * BREATH_AMP
+            sx = 1.0 + breath
+            sy = 1.0 + breath * 0.5
+            nw, nh = max(10, int(pw * sx)), max(10, int(ph * sy))
+            frame = self._make_frame(scaled, nw, nh, 0, 0, 1.0)
+            self._idle_frames.append(frame)
 
-        sx, sy = 1.0 + breath, 1.0 + breath * 0.5
-        nw = max(10, int(pw * sx))
-        nh = max(10, int(ph * sy))
+        # speaking 帧（嘴部动作由气泡表现，这里只做弹跳）
+        self._speak_frames.clear()
+        for i in range(FRAMES):
+            phase = (i / FRAMES) * 2 * math.pi
+            bounce = abs(math.sin(phase * 3)) * 4
+            nw = pw
+            nh = ph
+            frame = self._make_frame(scaled, nw, nh, 0, -int(bounce), 1.0)
+            self._speak_frames.append(frame)
 
-        # 说话弹跳
-        oy = int((lh - nh) // 2)
+        # sleep 帧
+        self._sleep_frames.clear()
+        for i in range(FRAMES):
+            phase = (i / FRAMES) * 2 * math.pi
+            breath = math.sin(phase) * BREATH_AMP * 0.4
+            sx = 1.0 + breath
+            sy = 1.0 + breath * 0.3
+            nw, nh = max(10, int(pw * sx)), max(10, int(ph * sy))
+            frame = self._make_frame(scaled, nw, nh, 0, 0, 0.5)
+            self._sleep_frames.append(frame)
+
+        # tap 晃动帧
+        self._tap_frames.clear()
+        for i in range(8):
+            t = i / 7
+            shake = math.sin(t * math.pi * 3) * 8 * (1 - t)
+            frame = self._make_frame(scaled, pw, ph, int(shake), 0, 1.0)
+            self._tap_frames.append(frame)
+
+    def _make_frame(self, src: QPixmap, w: int, h: int,
+                    ox: int, oy: int, opacity: float) -> QPixmap:
+        """渲染一帧到透明画布"""
+        lw, lh = self.label.width(), self.label.height()
+        canvas = QPixmap(lw, lh)
+        canvas.fill(Qt.GlobalColor.transparent)
+        p = QPainter(canvas)
+        p.setOpacity(opacity)
+        x = (lw - w) // 2 + ox
+        y = (lh - h) // 2 - 15 + oy  # 偏上
+        scaled = src.scaled(w, h, Qt.AspectRatioMode.KeepAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation)
+        p.drawPixmap(x, y, scaled)
+        p.end()
+        return canvas
+
+    # ============================================================
+    # 每帧：只切换 QPixmap，零计算
+    # ============================================================
+
+    def _tick(self):
+        if self._tap_frames_left > 0:
+            self._tap_frames_left -= 1
+            self.label.setPixmap(self._tap_frames[self._tap_idx])
+            self._tap_idx = (self._tap_idx + 1) % len(self._tap_frames)
+            if self._tap_frames_left == 0:
+                self._frame_idx = 0  # 回到呼吸
+            return
+
+        frames = self._idle_frames
         if self.anim_state == ANIM_SPEAKING:
-            oy -= int(abs(math.sin(self.talk_phase)) * 4)
+            frames = self._speak_frames
+        elif self.anim_state == ANIM_SLEEPING:
+            frames = self._sleep_frames
 
-        # 点击晃动
-        ox = int((lw - nw) // 2)
-        if self.tap_reaction > 0:
-            ox += int(math.sin(self.tap_reaction * 20) * 8 * self.tap_reaction)
+        if not frames:
+            return
 
-        # 只用 QPixmap.scaled，不用 QPainter（省掉创建 QPainter 的开销）
-        frame = pix.scaled(nw, nh,
-                           Qt.AspectRatioMode.KeepAspectRatio,
-                           Qt.TransformationMode.SmoothTransformation)
-
-        # 只在位置/尺寸变化时创建新 QPixmap
-        if nw != lw or nh != lh:
-            canvas = QPixmap(lw, lh)
-            canvas.fill(Qt.GlobalColor.transparent)
-            p = QPainter(canvas)
-            if self.anim_state == ANIM_SLEEPING:
-                p.setOpacity(0.6)
-            p.drawPixmap(ox, oy, frame)
-            p.end()
-            self._display_pixmap = canvas
-        elif ox != getattr(self, '_last_ox', -1) or oy != getattr(self, '_last_oy', -1):
-            canvas = QPixmap(lw, lh)
-            canvas.fill(Qt.GlobalColor.transparent)
-            p = QPainter(canvas)
-            if self.anim_state == ANIM_SLEEPING:
-                p.setOpacity(0.6)
-            p.drawPixmap(ox, oy, frame)
-            p.end()
-            self._display_pixmap = canvas
-        else:
-            # 尺寸位置没变 → 复用上一帧，不创建新对象
-            pass
-
-        self._last_ox, self._last_oy = ox, oy
-        self.label.setPixmap(self._display_pixmap or canvas or frame)
+        self.label.setPixmap(frames[self._frame_idx])
+        self._frame_idx = (self._frame_idx + 1) % len(frames)
 
     def set_anim(self, state: str):
         self.anim_state = state
-        if state != ANIM_SPEAKING:
-            self.talk_phase = 0
+        self._frame_idx = 0
 
-    def tap(self, zone: str):
-        self.tap_reaction = 1.0
+    def tap(self, zone: str = ""):
+        if self._tap_frames:
+            self._tap_idx = 0
+            self._tap_frames_left = len(self._tap_frames)
