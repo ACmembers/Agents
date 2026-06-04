@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'" />
+    <title>DeskPet</title>
+    <style>
+      /* ============================================================
+         🚀 性能优化：CSS 硬件加速 + 最小化重绘
+         ============================================================ */
+
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+
+      html, body, #root {
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: transparent;
+        -webkit-app-region: no-drag;
+        user-select: none;
+
+        /* ⭐ 强制 GPU 合成层，避免 CPU 绘制透明背景 */
+        -webkit-transform: translateZ(0);
+        transform: translateZ(0);
+        will-change: transform;
+      }
+
+      /* ⭐ 宠物容器：独立 GPU 层，动画不触发父级重绘 */
+      .pet-container {
+        will-change: transform;
+        -webkit-transform: translateZ(0);
+        transform: translateZ(0);
+        contain: layout style;
+      }
+
+      /* ⭐ 呼吸动画用 CSS 完成，不走 JS 帧循环 */
+      @keyframes pet-breath {
+        0%, 100% { transform: translateY(0) scale(1); }
+        50% { transform: translateY(-4px) scale(1.02); }
+      }
+
+      .pet-idle {
+        animation: pet-breath 3s ease-in-out infinite;
+      }
+
+      /* ⭐ 气泡动画 */
+      @keyframes bubble-in {
+        from {
+          opacity: 0;
+          transform: translateX(-50%) translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(-50%) translateY(0);
+        }
+      }
+
+      .bubble-enter {
+        animation: bubble-in 0.25s ease-out forwards;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

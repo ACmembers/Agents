@@ -1,0 +1,16 @@
+{
+  "compilerOptions": {
+    "composite": true,
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "jsx": "react-jsx",
+    "outDir": "../../dist/renderer",
+    "rootDir": ".",
+    "sourceMap": true
+  },
+  "include": ["./**/*.ts", "./**/*.tsx"]
+}
