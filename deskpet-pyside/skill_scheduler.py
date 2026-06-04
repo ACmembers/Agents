@@ -95,7 +95,6 @@ class SkillScheduler(QObject):
 
     def _trigger(self, skill: dict):
         """触发技能 → 回调"""
-        print(f"[Skill] 触发: {skill['name']}")
         if self.on_skill_triggered:
             self.on_skill_triggered(skill)
 

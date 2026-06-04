@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QFileDialog, QGroupBox, QFormLayout
 )
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QPixmap
 
 from config import load_config, save_config, load_skills, save_skills, load_conversations
 from ai_client import PROVIDER_DEFAULTS
@@ -17,8 +18,9 @@ from phoebe_persona import PHOEBE_SYSTEM_PROMPT
 
 
 class SettingsWindow(QDialog):
-    def __init__(self, app_ref=None, parent=None):
+    def __init__(self, character_manager=None, app_ref=None, parent=None):
         super().__init__(parent)
+        self.cm = character_manager
         self.app_ref = app_ref
         self.setWindowTitle("DeskPet · 设置")
         self.resize(640, 520)
@@ -27,7 +29,7 @@ class SettingsWindow(QDialog):
         self.tabs.addTab(self._tab_api(), "🔌 API")
         self.tabs.addTab(self._tab_persona(), "✨ 人设")
         self.tabs.addTab(self._tab_skills(), "⚡ Skill")
-        self.tabs.addTab(self._tab_characters(), "🎭 角色")
+        self.tabs.addTab(self._tab_appearance(), "🖼️ 外观")
         self.tabs.addTab(self._tab_voice(), "🔊 语音")
         self.tabs.addTab(self._tab_history(), "💬 历史")
 
@@ -235,7 +237,200 @@ class SettingsWindow(QDialog):
         self._refresh_skill_list()
 
     # ============================================================
-    # Tab 4: 语音
+    # Tab 4: 外观
+    # ============================================================
+    def _tab_appearance(self):
+        w = QWidget()
+        layout = QVBoxLayout(w)
+        layout.setSpacing(12)
+
+        # ===== 方式一：快速换图 =====
+        grp1 = QGroupBox("🖼️ 快速换图")
+        g1 = QVBoxLayout(grp1)
+
+        cfg = load_config()
+        current_img = cfg.get("appearance", {}).get("image_path", "")
+        if not current_img:
+            default = str(Path(__file__).parent / "assets" / "phoebe.jpg")
+            if Path(default).exists():
+                current_img = default
+
+        self.img_label = QLabel(f"当前: {current_img or '未设置'}")
+        self.img_label.setWordWrap(True)
+        self.img_label.setStyleSheet("color: #4c5a7e; font-size: 11px;")
+        g1.addWidget(self.img_label)
+
+        self.preview_label = QLabel("（预览）")
+        self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.preview_label.setMinimumHeight(160)
+        self.preview_label.setStyleSheet("border: 1px solid #e4e8f0; border-radius: 8px; background: #fafafa; color: #a9b4cc;")
+        if current_img:
+            pm = QPixmap(current_img)
+            if not pm.isNull():
+                self.preview_label.setPixmap(pm.scaledToHeight(150, Qt.TransformationMode.SmoothTransformation))
+        g1.addWidget(self.preview_label)
+
+        row1 = QHBoxLayout()
+        btn_pick = QPushButton("📁 选择图片")
+        btn_pick.clicked.connect(self._pick_image)
+        btn_pick.setMinimumHeight(34)
+        btn_reset = QPushButton("🔄 恢复默认")
+        btn_reset.clicked.connect(self._reset_image)
+        btn_reset.setMinimumHeight(34)
+        row1.addWidget(btn_pick)
+        row1.addWidget(btn_reset)
+        g1.addLayout(row1)
+
+        layout.addWidget(grp1)
+
+        # ===== 方式二：角色包导入（含人设+外观+语音） =====
+        grp2 = QGroupBox("📦 角色包导入（含人设 + 外观 + 语音提示词）")
+        g2 = QVBoxLayout(grp2)
+
+        self.drop_label = QLabel(
+            "拖拽 .zip 角色包到此处\n"
+            "或点击下方按钮选择文件"
+        )
+        self.drop_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.drop_label.setMinimumHeight(80)
+        self.drop_label.setStyleSheet(
+            "border: 2px dashed #a9b4cc; border-radius: 10px; background: #f8f6f2; color: #7f8db1; font-size: 12px; padding: 15px;"
+        )
+        self.drop_label.setAcceptDrops(True)
+        self.drop_label.dragEnterEvent = self._char_drag_enter
+        self.drop_label.dragLeaveEvent = self._char_drag_leave
+        self.drop_label.dropEvent = self._char_drop
+        g2.addWidget(self.drop_label)
+
+        self.char_list = QListWidget()
+        self.char_list.setMaximumHeight(100)
+        self._refresh_char_list()
+        g2.addWidget(self.char_list)
+
+        row2 = QHBoxLayout()
+        btn_import = QPushButton("📦 导入 .zip")
+        btn_import.clicked.connect(self._import_character)
+        btn_activate = QPushButton("✅ 使用此角色")
+        btn_activate.clicked.connect(self._activate_character)
+        btn_delete = QPushButton("🗑️ 删除")
+        btn_delete.clicked.connect(self._delete_character)
+        row2.addWidget(btn_import)
+        row2.addWidget(btn_activate)
+        row2.addWidget(btn_delete)
+        g2.addLayout(row2)
+
+        g2.addWidget(QLabel("角色包格式: zip 含 manifest.json + 图片文件"))
+        layout.addWidget(grp2)
+
+        return w
+
+    # ---------- 快速换图 ----------
+    def _pick_image(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "选择角色图片", "",
+            "图片 (*.png *.jpg *.jpeg *.webp *.bmp);;所有 (*.*)"
+        )
+        if not path:
+            return
+        cfg = load_config()
+        cfg.setdefault("appearance", {})["image_path"] = path
+        save_config(cfg)
+        self.img_label.setText(f"当前: {path}")
+        pm = QPixmap(path)
+        if not pm.isNull():
+            self.preview_label.setPixmap(pm.scaledToHeight(150, Qt.TransformationMode.SmoothTransformation))
+            if self.app_ref:
+                self.app_ref.pet.renderer.load_image(path)
+
+    def _reset_image(self):
+        default = str(Path(__file__).parent / "assets" / "phoebe.jpg")
+        cfg = load_config()
+        cfg.setdefault("appearance", {})["image_path"] = default
+        save_config(cfg)
+        self.img_label.setText(f"当前: {default}")
+        pm = QPixmap(default)
+        if not pm.isNull():
+            self.preview_label.setPixmap(pm.scaledToHeight(150, Qt.TransformationMode.SmoothTransformation))
+            if self.app_ref:
+                self.app_ref.pet.renderer.load_image(default)
+
+    # ---------- 角色包拖拽 ----------
+    def _char_drag_enter(self, event):
+        if event.mimeData().hasUrls():
+            self.drop_label.setStyleSheet(
+                "border: 2px dashed #d4a840; border-radius: 10px; background: #fef9ee; color: #d4a840; font-size: 12px; padding: 15px;"
+            )
+            event.accept()
+
+    def _char_drag_leave(self, event):
+        self.drop_label.setStyleSheet(
+            "border: 2px dashed #a9b4cc; border-radius: 10px; background: #f8f6f2; color: #7f8db1; font-size: 12px; padding: 15px;"
+        )
+
+    def _char_drop(self, event):
+        self._char_drag_leave(event)
+        for url in event.mimeData().urls():
+            path = url.toLocalFile()
+            if path.endswith('.zip'):
+                self._do_import(path)
+                return
+        QMessageBox.warning(self, "格式错误", "请拖入 .zip 格式的角色包")
+
+    def _import_character(self):
+        path, _ = QFileDialog.getOpenFileName(self, "导入角色包", "", "ZIP (*.zip)")
+        if path:
+            self._do_import(path)
+
+    def _do_import(self, path):
+        from character_manager import CharacterManager
+        if not hasattr(self, '_cm'):
+            self._cm = CharacterManager()
+        ok, msg = self._cm.import_pack(path)
+        QMessageBox.information(self, "导入结果", msg)
+        if ok:
+            self._refresh_char_list()
+
+    def _activate_character(self):
+        item = self.char_list.currentItem()
+        if not item:
+            return
+        name = item.text().replace("✅ ", "").split(" (")[0]
+        from character_manager import CharacterManager
+        if not hasattr(self, '_cm'):
+            self._cm = CharacterManager()
+        ok, msg = self._cm.set_active(name)
+        if ok and self.app_ref:
+            img = self._cm.get_active_image("idle")
+            if img:
+                self.app_ref.pet.renderer.load_image(img)
+        QMessageBox.information(self, "切换结果", msg)
+        self._refresh_char_list()
+
+    def _delete_character(self):
+        item = self.char_list.currentItem()
+        if not item:
+            return
+        name = item.text().replace("✅ ", "").split(" (")[0]
+        from character_manager import CharacterManager
+        if not hasattr(self, '_cm'):
+            self._cm = CharacterManager()
+        if self._cm.delete_pack(name):
+            self._refresh_char_list()
+
+    def _refresh_char_list(self):
+        self.char_list.clear()
+        from character_manager import CharacterManager
+        if not hasattr(self, '_cm'):
+            self._cm = CharacterManager()
+        for p in self._cm.list_packs():
+            label = f"{p['name']} (v{p['version']}) - {','.join(p.get('animations',[]))}"
+            item = QListWidgetItem(label)
+            if p.get('active'):
+                item.setText(f"✅ {label}")
+            self.char_list.addItem(item)
+
+    # ============================================================
+    # Tab 5: 语音
     # ============================================================
     def _tab_voice(self):
         w = QWidget()
