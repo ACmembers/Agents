@@ -1,0 +1,12 @@
+<RCC>
+    <qresource prefix="/native-desktop/assets">
+        <file>../assets/roles/default/images/idle.png</file>
+        <file>../assets/roles/default/images/greeting.png</file>
+        <file>../assets/roles/default/images/thinking.png</file>
+        <file>../assets/roles/default/images/happy.png</file>
+        <file>../assets/roles/default/images/sad.png</file>
+        <file>../assets/roles/default/images/surprised.png</file>
+        <file>../assets/roles/default/images/listening.png</file>
+        <file>../assets/roles/default/images/sleeping.png</file>
+    </qresource>
+</RCC>
