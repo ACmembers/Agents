@@ -1,12 +1,32 @@
 <RCC>
-    <qresource prefix="/native-desktop/assets">
-        <file>../assets/roles/default/images/idle.png</file>
-        <file>../assets/roles/default/images/greeting.png</file>
-        <file>../assets/roles/default/images/thinking.png</file>
-        <file>../assets/roles/default/images/happy.png</file>
-        <file>../assets/roles/default/images/sad.png</file>
-        <file>../assets/roles/default/images/surprised.png</file>
-        <file>../assets/roles/default/images/listening.png</file>
-        <file>../assets/roles/default/images/sleeping.png</file>
+    <!-- Default role pack (Sakura images as default) -->
+    <qresource prefix="/native-desktop/assets/roles/default/images">
+        <file alias="idle.png">../assets/roles/default/images/idle.png</file>
+        <file alias="greeting.png">../assets/roles/default/images/greeting.png</file>
+        <file alias="thinking.png">../assets/roles/default/images/thinking.png</file>
+        <file alias="happy.png">../assets/roles/default/images/happy.png</file>
+        <file alias="sad.png">../assets/roles/default/images/sad.png</file>
+        <file alias="surprised.png">../assets/roles/default/images/surprised.png</file>
+        <file alias="listening.png">../assets/roles/default/images/listening.png</file>
+        <file alias="sleeping.png">../assets/roles/default/images/sleeping.png</file>
+    </qresource>
+
+    <!-- Sakura role pack -->
+    <qresource prefix="/native-desktop/assets/roles/sakura/images">
+        <file alias="idle.png">../assets/roles/sakura/images/idle.png</file>
+        <file alias="greeting.png">../assets/roles/sakura/images/greeting.png</file>
+        <file alias="thinking.png">../assets/roles/sakura/images/thinking.png</file>
+        <file alias="happy.png">../assets/roles/sakura/images/happy.png</file>
+        <file alias="sad.png">../assets/roles/sakura/images/sad.png</file>
+        <file alias="surprised.png">../assets/roles/sakura/images/surprised.png</file>
+        <file alias="listening.png">../assets/roles/sakura/images/listening.png</file>
+        <file alias="sleeping.png">../assets/roles/sakura/images/sleeping.png</file>
+    </qresource>
+
+    <!-- Sakura QML UI files -->
+    <qresource prefix="/native-desktop/ui">
+        <file alias="Main.qml">../ui/qml/Main.qml</file>
+        <file alias="PetSurface.qml">../ui/qml/components/PetSurface.qml</file>
+        <file alias="StateBadge.qml">../ui/qml/components/StateBadge.qml</file>
     </qresource>
 </RCC>
