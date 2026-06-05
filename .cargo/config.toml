@@ -1,0 +1,7 @@
+# Cargo configuration for DeskPet Rust+Qt development
+# Global settings — Qt-specific linker flags are in native-desktop/.cargo/config.toml
+
+[env]
+# Qt 6.8.3 MinGW paths for build scripts
+CMAKE_PREFIX_PATH = { value = "C:/Qt/6.8.3/mingw_64", force = false }
+PKG_CONFIG_PATH = { value = "C:/Qt/6.8.3/mingw_64/lib/pkgconfig", force = false }

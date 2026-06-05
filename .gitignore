@@ -28,3 +28,16 @@ npm-debug.log*
 *.dmg
 *.exe
 *.AppImage
+
+# Rust build
+target/
+
+# CMake
+CMakeFiles/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# env script (local only)
+env.sh
