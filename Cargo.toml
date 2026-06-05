@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "native-desktop-core",
+    "native-desktop",
+]
+resolver = "2"

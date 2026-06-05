@@ -1,0 +1,5 @@
+# Qt linker flags for the native-desktop crate (MinGW Qt 6.8.3)
+[target.x86_64-pc-windows-gnu]
+rustflags = [
+    "-C", "link-args=-LC:/Qt/6.8.3/mingw_64/lib -lQt6Quick -lQt6Qml -lQt6Gui -lQt6Core -lQt6Network -lQt6QmlModels",
+]

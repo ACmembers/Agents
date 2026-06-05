@@ -1,0 +1,3 @@
+# Cargo configuration for DeskPet (MSVC toolchain)
+[build]
+target-dir = "C:/tmp/deskpet-target"
