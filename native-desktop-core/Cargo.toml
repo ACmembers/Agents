@@ -18,6 +18,8 @@ url = "2"
 futures-util = "0.3"
 async-trait = "0.1"
 uuid = { version = "1", features = ["v4"] }
+rand = "0.8"
 
 [dev-dependencies]
 tokio-test = "0.4"
+tempfile = "3"
