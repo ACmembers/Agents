@@ -23,10 +23,11 @@
         <file alias="sleeping.png">../assets/roles/sakura/images/sleeping.png</file>
     </qresource>
 
-    <!-- Sakura QML UI files -->
+    <!-- QML UI files -->
     <qresource prefix="/native-desktop/ui">
         <file alias="Main.qml">../ui/qml/Main.qml</file>
         <file alias="PetSurface.qml">../ui/qml/components/PetSurface.qml</file>
         <file alias="StateBadge.qml">../ui/qml/components/StateBadge.qml</file>
+        <file alias="SettingsDialog.qml">../ui/qml/components/SettingsDialog.qml</file>
     </qresource>
 </RCC>

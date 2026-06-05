@@ -15,3 +15,4 @@ pub mod conversation;
 pub mod search;
 pub mod speech;
 pub mod roles;
+pub mod app_core;
