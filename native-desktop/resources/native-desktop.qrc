@@ -29,5 +29,7 @@
         <file alias="PetSurface.qml">../ui/qml/components/PetSurface.qml</file>
         <file alias="StateBadge.qml">../ui/qml/components/StateBadge.qml</file>
         <file alias="SettingsDialog.qml">../ui/qml/components/SettingsDialog.qml</file>
+        <file alias="ChatBubble.qml">../ui/qml/components/ChatBubble.qml</file>
+        <file alias="ChatInput.qml">../ui/qml/components/ChatInput.qml</file>
     </qresource>
 </RCC>

@@ -83,7 +83,11 @@ Window {
         onDragStarted: root.unsnap()
         onDragFinished: root.snapToEdge()
         onClicked: zone => console.log("[Main] clicked zone:", zone)
-        onDoubleClicked: console.log("[Main] double-clicked")
+        onDoubleClicked: petSurface.showInput = true
+        onMessageSent: text => {
+            console.log("[Main] user said:", text)
+            // TODO: call appModel.userSaid(text) when Qt bridge is wired
+        }
     }
 
     Component.onCompleted: {

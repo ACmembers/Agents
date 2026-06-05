@@ -16,3 +16,5 @@ pub mod search;
 pub mod speech;
 pub mod roles;
 pub mod app_core;
+pub mod memory;
+pub mod auto_chat;
