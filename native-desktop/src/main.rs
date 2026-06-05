@@ -105,6 +105,20 @@ fn main() {
     let core = Arc::new(Mutex::new(AppCore::new()));
     let core_clone = core.clone();
 
+    // If no API key in config, try environment variable
+    {
+        let mut c = core.lock().unwrap();
+        if c.config.api.api_key.is_empty() {
+            if let Ok(key) = std::env::var("DEEPSEEK_API_KEY") {
+                if !key.is_empty() {
+                    c.config.api.api_key = key;
+                    c.llm_adapter = native_desktop_core::llm::LlmAdapter::new(&c.config.api);
+                    log::info!("[DeskPet] Loaded API key from DEEPSEEK_API_KEY env var");
+                }
+            }
+        }
+    }
+
     // Write initial state
     {
         let c = core.lock().unwrap();
